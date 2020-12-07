@@ -1,0 +1,105 @@
+# --*-- coding:utf-8 --*--
+import os
+from hashlib import md5
+from multiprocessing.pool import Pool
+import requests
+from urllib.parse import urlencode
+
+'''
+@File: jiepai.py
+@Author: Hayes Wong
+@Email: 616132717@qq.com
+@Time:  2020-12-7 20:57
+'''
+
+GROUP_STRAT = 1
+GROUP_END = 10
+
+URL = 'https://www.toutiao.com/api/search/content/?'
+
+def get_page(offset):
+    headers = {
+        'cookie': 'tt_webid=6755317032361018894; WEATHER_CITY=%E5%8C%97%E4%BA%AC; __tasessionId=iix0i88fv1572844826803; tt_webid=6755317032361018894; s_v_web_id=9e3d1341a0ce3a6625dafa55bd50a8c5; csrftoken=4e5d24d1aa648714a20fa478adb67e3c; sso_uid_tt=9989002b18278fa8a91a2d9bfceff0db; toutiao_sso_user=22695687fb520aba3bba92d81182e09d; sid_guard=77ee6776e543023f76e7fb53e187aa0b%7C1572844883%7C5184000%7CFri%2C+03-Jan-2020+05%3A21%3A23+GMT; uid_tt=6bb53dbf3ec71913bc04a6c4a27ac973; sid_tt=77ee6776e543023f76e7fb53e187aa0b; sessionid=77ee6776e543023f76e7fb53e187aa0b',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.157 Safari/537.36',
+        'x-requested-with': 'XMLHttpRequest',
+        'referer': 'https://www.toutiao.com/search/?keyword=%E8%A1%97%E6%8B%8D',
+    }
+    params = {
+        'aid': 24,
+        'app_name': 'web_search',
+        'offset': offset,
+        'format': 'json',
+        'keyword': '街拍美图',
+        'autoload': 'true',
+        'count': '20',
+        'en_qc': '1',
+        'cur_tab': '1',
+        'from': 'search_tab',
+        'pd': 'synthesis',
+        'timestamp': '1572845169181'
+    }
+    real_url = URL + urlencode(params)
+    print(real_url)
+    try:
+        response = requests.get(real_url,headers = headers)
+        response.raise_for_status()
+        #print(response.status_code)
+        #print(response.json())
+        return response.json()
+    except:
+        print('请求失败')
+
+def get_images(json):
+    if json.get('data'):
+        items = json.get('data')
+        try:
+            for item in items:
+                title = item.get('title')
+                images = item.get('image_list')
+                for image in images:
+                    yield {
+                        'title': title,
+                        'image': image.get('url')
+                    }
+        except TypeError:
+            print("images返回空，未知错误，爬取下一页")
+    else:
+        print('data为空')
+def save_image(item):
+    if not os.path.exists("今日头条街拍"):
+        os.makedirs("今日头条街拍" )
+    if not os.path.exists("今日头条街拍" + '/' + item.get('title')):
+        os.makedirs("今日头条街拍" + '/' + item.get('title'))
+    try:
+        print(item.get('image'))
+        response = requests.get(item.get('image'))
+        response.raise_for_status()
+        file_path = '{0}/{1}.{2}'.format("今日头条街拍" + '/' + item.get('title'), md5(response.content).hexdigest(), 'jpg')
+        if not os.path.exists(file_path):
+            with open(file_path,'wb') as f:
+                print('正在下载图片...')
+                f.write(response.content)
+                print('下载成功！')
+        else:
+            print('Already Download',file_path)
+    except:
+        print('图片链接异常，保存出错')
+
+def main(offset):
+    print(offset)
+    json = get_page(offset)
+    for item in get_images(json):
+        print(item)
+        #print(type(item))
+        save_image(item)
+
+if __name__ == '__main__':
+    print('hello')
+    # for offset in range(GROUP_STRAT+1,GROUP_END+1):
+    #     print(20 * offset)
+    #     main(20 * offset)
+
+    pool = Pool()
+    pool.map(main, [offset * 20 for offset in range(GROUP_STRAT,GROUP_END+1)])
+    pool.close()
+    pool.join()
